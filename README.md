@@ -1,2 +1,9 @@
 # PTreceiver
 Android App written in Beeware Python
+
+This app follows the beeware structure so only the app.py is here.
+
+PTreceiver is used to open an OTG USB port and set up the port to do serial communications with a Silicon Labs USB to Xbee carrier board.
+Large portions of this were borrowed from usb4a and consists of all calls into the java subsystem in the easiest way I could find.  As such
+it will only work with specific Xbee carrier boards that use the Silicon Labs chipset.  I make no attempt to identify the board or check for
+other types of drivers or chipsets.
