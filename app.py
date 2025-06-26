@@ -76,8 +76,18 @@ class PTReceiver(toga.App):
 
     # Send network discovery, all Xbees on this network return who they are
     def start_discover(self, widget):
+        self.working_text.text = "Scanning for Receivers..."
+
+        # broadcast - tell all Xbees to answer who they are
         self.sendNetworkDiscovery()
+
+        # setup the screen buttons we will use for each receiver
+        scan_content = toga.Box(style=Pack(direction=COLUMN, alignment=CENTER, margin_top=5))
+        self.button_list = []
+
+        # read the responses, if any, sometimes several scans are required
         size, dataBuffer = self.readXbee()
+        self.working_text.text = ""
 
         # may be several responses, turn data into list of xbee api frames
         responses = self.parseNodeData(size, dataBuffer)
@@ -86,6 +96,22 @@ class PTReceiver(toga.App):
         for r in responses:
             mac, id = self.getMacAndNodeID(r)
             print ("mac:", mac, "id:", id)
+            fmstring = "{} {}".format(mac, id)
+            self.button_list.append([mac, id])
+            scan_content.add(
+                toga.Button(id=mac, text=fmstring,
+                    on_press = self.connectToClient,
+                    style=Pack(width=218, height=120, margin_top=6, background_color="#aaaaaa", color="#000000", font_size=16),
+                )
+            )
+
+        self.scroller = toga.ScrollContainer(content=scan_content)
+        self.main_window.content = self.scroller
+        self.main_window.show()
+
+    def connectToClient(self, buttonid):
+        pass
+
 
 
     # iterates through the data to turn it into a list of one or more messages, delimited by 0x7E
@@ -115,8 +141,6 @@ class PTReceiver(toga.App):
             for i in range(19, len(data)-2):
                 id = id + chr(data[i])
         return mac, id
-
-
 
     # read any data from the Xbee
     def readXbee(self):
