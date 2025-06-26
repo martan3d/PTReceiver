@@ -83,11 +83,14 @@ class PTReceiver(toga.App):
 
         # setup the screen buttons we will use for each receiver
         scan_content = toga.Box(style=Pack(direction=COLUMN, alignment=CENTER, margin_top=5))
-        self.button_list = []
+        button_list = []
 
         # read the responses, if any, sometimes several scans are required
         size, dataBuffer = self.readXbee()
         self.working_text.text = ""
+
+        scan_content.add(self.discover_button)
+        scan_content.add(self.working_text)
 
         # may be several responses, turn data into list of xbee api frames
         responses = self.parseNodeData(size, dataBuffer)
@@ -96,12 +99,13 @@ class PTReceiver(toga.App):
         for r in responses:
             mac, id = self.getMacAndNodeID(r)
             print ("mac:", mac, "id:", id)
+            if mac == "" or id == "": continue
             fmstring = "{} {}".format(mac, id)
-            self.button_list.append([mac, id])
+            button_list.append([mac, id])
             scan_content.add(
                 toga.Button(id=mac, text=fmstring,
                     on_press = self.connectToClient,
-                    style=Pack(width=218, height=120, margin_top=6, background_color="#aaaaaa", color="#000000", font_size=16),
+                    style=Pack(width=230, height=120, margin_top=12, background_color="#bbbbbb", color="#000000", font_size=16),
                 )
             )
 
