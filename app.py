@@ -117,6 +117,17 @@ class PTReceiver(toga.App):
         pass
 
 
+    def buildAddress(address):
+        dest    = [0,0,0,0,0,0,0,0]
+        dest[0] = int(address[:2], 16)           # very brute force way to pull this out!
+        dest[1] = int(address[2:4], 16)
+        dest[2] = int(address[4:6], 16)
+        dest[3] = int(address[6:8], 16)
+        dest[4] = int(address[8:10], 16)
+        dest[5] = int(address[10:12], 16)
+        dest[6] = int(address[12:14], 16)
+        dest[7] = int(address[14:16], 16)
+        return des
 
     # iterates through the data to turn it into a list of one or more messages, delimited by 0x7E
     def parseNodeData(self, size, data):
@@ -215,6 +226,52 @@ class PTReceiver(toga.App):
         hasPermission = self.usbmanager.hasPermission(self.device)
         while not hasPermission:
             hasPermission = self.usbmanager.hasPermission(self.device)
+
+
+##
+## Send Directed Message to an Xbee on the Network
+##
+
+    def xbeeTransmitDataFrame(self, dest, data):
+        txdata = []
+        dl = len(data)
+        for d in data:     # make sure it's in valid bytes for transmit
+            try:
+               txdata.append(int(ord(d)))
+            except:
+               txdata.append(int(d))
+
+        frame = []
+        frame.append(0x7e)	# header
+        frame.append(0)	        # our data is always < 256
+        frame.append(dl+11)     # all data except header, length and checksum
+        frame.append(0x00)      # TRANSMIT REQUEST 64bit (mac) address - send Query to Xbee module
+        frame.append(0x01)      # frame ID for ack- 0 = disable
+
+        frame.append(dest[0])   # 64 bit address (mac)
+        frame.append(dest[1])
+        frame.append(dest[2])
+        frame.append(dest[3])
+        frame.append(dest[4])
+        frame.append(dest[5])
+        frame.append(dest[6])
+        frame.append(dest[7])
+
+        frame.append(0x00)      # always reserved
+
+        for i in txdata:        # move data to transmit buffer
+            frame.append(i)
+        frame.append(0)         # checksum position
+
+        cks = 0;
+        for i in range(3, dl+14):	# compute checksum
+            cks += int(frame[i])
+
+        i = (255-cks) & 0x00ff
+        frame[dl+14] = i        # insert checksum in message
+
+        return frame
+
 
 
 def main():
