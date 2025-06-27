@@ -23,6 +23,10 @@ BAUD_RATE_GEN_FREQ        = 0x384000
 DEFAULT_BAUDRATE          = 38400
 DEFAULT_READ_BUFFER_SIZE  = 1024
 
+# Receiver Message types
+
+RETURNTYPE       = 37
+
 # Android Java Class names, used for permissions
 
 Intent = jclass('android.content.Intent')
@@ -113,11 +117,28 @@ class PTReceiver(toga.App):
         self.main_window.content = self.scroller
         self.main_window.show()
 
+    # after scan, all devices are displayed as buttons, pressing one of them sends query to that mac address
     def connectToClient(self, buttonid):
-        pass
+        address = self.buildAddress(buttonid)
+        data = chr(RETURNTYPE) + "000000000000000000"
+        messageFrame = self.buildXbeeTransmitData(address, data)
 
+        self.sendXbeeRequest(messageFrame)
+        print ("SEND MESSAGE size", len(messageFrame))
+        hexString = ""
+        for b in range(0, len(messageFrame)):
+            hexString = hexString + hex(messageFrame[b]) + " "
+        print (hexString)
 
-    def buildAddress(address):
+        size, dataBuffer = self.readXbee()
+        print ("RETURN MESSAGE size", size)
+        hexString = ""
+        for b in range(0, size):
+            hexString = hexString + hex(dataBuffer[b]) + " "
+        print (hexString)
+
+    def buildAddress(self, adr):
+        address = adr.id
         dest    = [0,0,0,0,0,0,0,0]
         dest[0] = int(address[:2], 16)           # very brute force way to pull this out!
         dest[1] = int(address[2:4], 16)
@@ -127,7 +148,7 @@ class PTReceiver(toga.App):
         dest[5] = int(address[10:12], 16)
         dest[6] = int(address[12:14], 16)
         dest[7] = int(address[14:16], 16)
-        return des
+        return dest
 
     # iterates through the data to turn it into a list of one or more messages, delimited by 0x7E
     def parseNodeData(self, size, data):
@@ -151,7 +172,7 @@ class PTReceiver(toga.App):
         mac = "" 
         id = ""
         if len(data) > 20:
-            for i in range(11, 19):
+            for i in range(10, 18):
                 mac = mac + "{:02X}".format(data[i])
             for i in range(19, len(data)-2):
                 id = id + chr(data[i])
@@ -181,6 +202,11 @@ class PTReceiver(toga.App):
         data_length = len(buf)
         status = self.connection.bulkTransfer(self.writeEndpoint, buf, data_length, USB_WRITE_TIMEOUT_MILLIS)
 
+    def sendXbeeRequest(self, buff):
+        data_length = len(buff)
+        print (data_length, buff)
+        buffer = bytearray(buff)
+        status = self.connection.bulkTransfer(self.writeEndpoint, buffer, data_length, USB_WRITE_TIMEOUT_MILLIS)
 
     # open the USB port and configure it as a serial port to talk to the Xbee
     def openAndConfigureUSBPort(self):
@@ -232,7 +258,7 @@ class PTReceiver(toga.App):
 ## Send Directed Message to an Xbee on the Network
 ##
 
-    def xbeeTransmitDataFrame(self, dest, data):
+    def buildXbeeTransmitData(self, dest, data):
         txdata = []
         dl = len(data)
         for d in data:     # make sure it's in valid bytes for transmit
