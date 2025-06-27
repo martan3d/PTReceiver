@@ -13,3 +13,5 @@ use of Beeware and Briefcase to build it and the UI being built with toga, it's 
 Feel free to use parts and methods in your own builds. If you are doing something for a USB board other than Silicon Labs, take a look at usb4a as it has the parameters you need
 for a bunch of different USB interface chips.
 
+This was tested on a motorola moto G pure, Android 12
+
