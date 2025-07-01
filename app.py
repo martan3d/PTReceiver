@@ -7,7 +7,7 @@ import asyncio
 import time
 from toga.style import Pack
 from toga import Button, MultilineTextInput, Label, TextInput
-from toga.style.pack import COLUMN, ROW, CENTER
+from toga.style.pack import COLUMN, ROW, CENTER, RIGHT, LEFT, START, END
 from java import jclass
 from android.content import Context
 
@@ -26,6 +26,43 @@ DEFAULT_READ_BUFFER_SIZE  = 1024
 # Receiver Message types
 
 RETURNTYPE       = 37
+
+# Ids for buttons and text/numeric inputs
+
+PTID = 1000
+BASE = 1001
+ADDR = 1002
+CONS = 1003
+COND = 1004
+DECO = 1005
+SRV0 = 1010
+SRV1 = 1011
+SRV2 = 1012
+SRVM = 1013
+SVR0 = 1014
+SVR1 = 1015
+SVR2 = 1016
+SV0L = 1017
+SV0H = 1018
+SV1L = 1019
+SV1H = 1020
+SV2L = 1021
+SV2H = 1022
+SRVP = 1023
+SRRP = 1024
+
+SRVP0 = 1025
+SRVP1 = 1026
+SRVP2 = 1027
+
+OUTX = 1040
+OUTY = 1041
+WDOG = 1050
+BRAT = 1050
+BFNC = 1061
+ACCL = 1062
+DECL = 1063
+
 
 # Android Java Class names, used for permissions
 
@@ -46,18 +83,30 @@ class PTReceiver(toga.App):
 
         self.working_text = Label("", style=Pack(font_size=12, color="#000000"))
 
-        scan_content = toga.Box(style=Pack(direction=COLUMN, alignment=CENTER, margin_top=5))
+        scan_content = toga.Box(style=Pack(direction=COLUMN, align_items=CENTER, margin_top=5))
         scan_content.add(self.discover_button)
         scan_content.add(self.working_text)
 
-        self.scroller = toga.ScrollContainer(content=scan_content)
+        self.scroller = toga.ScrollContainer(content=scan_content, style=Pack(direction=COLUMN, align_items=CENTER))
 
         self.main_window = toga.MainWindow(title=self.formal_name)
         self.main_window.content = self.scroller
         self.main_window.show()
 
-        # Use Android java classes to query and control OTG USB port
+        # Use Android or PC code?
+        if toga.platform.current_platform == 'android':
+           self.setupAndroidSerialPort()
+        else:
+           self.setupPCSerialPort()
 
+
+
+    def setupPCSerialPort(self):
+        pass
+
+
+    def setupAndroidSerialPort(self):
+        # for now, Android
         self.context = jclass('org.beeware.android.MainActivity').singletonThis
         self.usbmanager = self.context.getSystemService(self.context.USB_SERVICE)
         self.usbDevices = self.usbmanager.getDeviceList()
@@ -75,7 +124,7 @@ class PTReceiver(toga.App):
         self.openAndConfigureUSBPort()
 
         # test connection by sending a broadcast to all nodes, nothing special, not really needed
-        self.sendTestMessage()
+#        self.sendTestMessage()
 
 
     # Send network discovery, all Xbees on this network return who they are
@@ -86,8 +135,8 @@ class PTReceiver(toga.App):
         self.sendNetworkDiscovery()
 
         # setup the screen buttons we will use for each receiver
-        scan_content = toga.Box(style=Pack(direction=COLUMN, alignment=CENTER, margin_top=5))
-        button_list = []
+        scan_content = toga.Box(style=Pack(direction=COLUMN, align_items=CENTER, margin_top=5))
+        self.buttonDict = {}
 
         # read the responses, if any, sometimes several scans are required
         size, dataBuffer = self.readXbee()
@@ -104,8 +153,8 @@ class PTReceiver(toga.App):
             mac, id = self.getMacAndNodeID(r)
             print ("mac:", mac, "id:", id)
             if mac == "" or id == "": continue
-            fmstring = "{} {}".format(mac, id)
-            button_list.append([mac, id])
+            fmstring = "{} {}".format(id, mac)
+            self.buttonDict[mac] = id
             scan_content.add(
                 toga.Button(id=mac, text=fmstring,
                     on_press = self.connectToClient,
@@ -123,19 +172,218 @@ class PTReceiver(toga.App):
         data = chr(RETURNTYPE) + "000000000000000000"
         messageFrame = self.buildXbeeTransmitData(address, data)
 
-        self.sendXbeeRequest(messageFrame)
-        print ("SEND MESSAGE size", len(messageFrame))
-        hexString = ""
-        for b in range(0, len(messageFrame)):
-            hexString = hexString + hex(messageFrame[b]) + " "
-        print (hexString)
+#        self.sendXbeeRequest(messageFrame)
+#        print ("SEND MESSAGE size", len(messageFrame))
+#        hexString = ""
+#        for b in range(0, len(messageFrame)):
+#            hexString = hexString + hex(messageFrame[b]) + " "
+#        print (hexString)
 
-        size, dataBuffer = self.readXbee()
-        print ("RETURN MESSAGE size", size)
-        hexString = ""
-        for b in range(0, size):
-            hexString = hexString + hex(dataBuffer[b]) + " "
-        print (hexString)
+#        size, dataBuffer = self.readXbee()
+#        print ("RETURN MESSAGE size", size)
+#        hexString = ""
+#        for b in range(0, size):
+#            hexString = hexString + hex(dataBuffer[b]) + " "
+#        print (hexString)
+
+        scan_content = toga.Box(style=Pack(direction=COLUMN, margin=30))
+
+        MARGINTOP = 2
+        LNUMWIDTH = 64
+        SNUMWIDTH = 32
+
+        # Ascii ID and Mac at top of display
+        idlabel  = toga.Label(self.buttonDict[buttonid.id], style=Pack(flex=1, color="#000000", align_items=CENTER, font_size=32))
+        maclabel = toga.Label(buttonid.id, style=Pack(flex=1, color="#000000", align_items=CENTER, font_size=12))
+        boxrowA  = toga.Box(children=[idlabel], style=Pack(direction=ROW, align_items=END, margin_top=4))
+        boxrowB  = toga.Box(children=[maclabel], style=Pack(direction=ROW, align_items=END, margin_top=2))
+
+        scan_content.add(boxrowA)
+        scan_content.add(boxrowB)
+
+        btn    = toga.Button(id=PTID, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("Protothrottle ID", style=Pack(width=275, align_items=END, font_size=18))
+        entry  = toga.TextInput(on_change=self.change_ptid, style=Pack(flex=1, height=45, width=SNUMWIDTH, margin_bottom=2, font_size=18, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, entry, btn], style=Pack(direction=ROW, align_items=END, margin_top=MARGINTOP))
+        scan_content.add(boxrow)
+
+        btn    = toga.Button(id=BASE, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("Base ID", style=Pack(width=275, align_items=END, font_size=18))
+        entry  = toga.NumberInput(on_change=self.change_ptid, style=Pack(flex=1, height=45, width=SNUMWIDTH, margin_bottom=2, font_size=18, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, entry, btn], style=Pack(direction=ROW, align_items=END, margin_top=MARGINTOP))
+        scan_content.add(boxrow)
+
+        btn    = toga.Button(id=ADDR, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("Loco Address", style=Pack(width=244, align_items=END, font_size=18))
+        entry  = toga.NumberInput(on_change=self.change_ptid, min=0, max=9999, style=Pack(flex=1, height=48, width=LNUMWIDTH, margin_bottom=2, font_size=18, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, entry, btn], style=Pack(direction=ROW, align_items=END, margin_top=MARGINTOP))
+        scan_content.add(boxrow)
+
+        btn0   = toga.Button(id=COND, text="OFF", on_press = self.sendPrgCommand, style=Pack(width=80, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=14))
+        btn1   = toga.Button(id=CONS, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("Consist Address", style=Pack(width=164, align_items=END, font_size=18))
+        entry  = toga.NumberInput(on_change=self.change_ptid, min=0, max=9999, style=Pack(flex=1, height=48, width=LNUMWIDTH, font_size=18, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, btn0, entry, btn1], style=Pack(direction=ROW, align_items=END, margin_top=MARGINTOP))
+        scan_content.add(boxrow)
+        
+        btn    = toga.Button(id=DECO, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=10, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("DCC Addr", style=Pack(width=244, align_items=END, font_size=18))
+        entry  = toga.NumberInput(on_change=self.change_ptid, min=0, max=9999, style=Pack(flex=1, height=48, width=LNUMWIDTH, font_size=18, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, entry, btn], style=Pack(direction=ROW, align_items=END, margin_top=MARGINTOP))
+        scan_content.add(boxrow)
+ 
+       #############################################################  Servo Mode
+
+        blank  = toga.Label("   ")
+        boxrow = toga.Box(children=[blank, toga.Divider(), blank], style=Pack(direction=COLUMN, margin_top=20))
+        scan_content.add(boxrow)
+
+        btn    = toga.Button(id=SRVP, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("Servo Mode", style=Pack(width=273, align_items=END, margin_bottom=10, font_size=18))
+        mode   = toga.Button(id=SRVM, text="ESC", on_press = self.sendPrgCommand, style=Pack(width=90, height=55, background_color="#bbbbbb", color="#000000", font_size=12))
+        boxrow = toga.Box(children=[desc, mode], style=Pack(direction=ROW, align_items=END, margin_top=20))
+        scan_content.add(boxrow)
+
+       ############################################################# 
+
+        boxrow = toga.Box(children=[blank, toga.Divider(), blank], style=Pack(direction=COLUMN, margin_top=20))
+        scan_content.add(boxrow)
+
+       ############################################################# Servo 0 Config
+
+        desc   = toga.Label("Servo 0", style=Pack(width=270, align_items=END, font_size=18))
+        rev    = toga.Switch("Reverse", id=SVR0, value=False, on_change=self.change_ptid)
+        boxrow = toga.Box(children=[desc, rev], style=Pack(direction=ROW, align_items=END, margin_top=8))
+        scan_content.add(boxrow)
+
+        btn    = toga.Button(id=SRVP0, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("     Function Code", style=Pack(width=282, align_items=END, font_size=12))
+        func   = toga.NumberInput(on_change=self.change_ptid, min=0, max=99, style=Pack(flex=1, height=48, width=24, font_size=12, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, func, btn], style=Pack(direction=ROW, align_items=END, margin_top=1))
+        scan_content.add(boxrow)
+
+        desc   = toga.Label("     Low Limit", style=Pack(width=244, align_items=END, font_size=12))
+        entry0 = toga.NumberInput(on_change=self.change_ptid, min=0, max=1000, style=Pack(flex=1, height=48, width=LNUMWIDTH, font_size=18, background_color="#eeeeee", color="#000000"))
+        btn    = toga.Button(id=SV0L, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        boxrow = toga.Box(children=[desc, entry0, btn], style=Pack(direction=ROW, align_items=END, margin_top=1))
+        scan_content.add(boxrow)
+
+        desc   = toga.Label(" ", style=Pack(width=20, align_items=END, font_size=18))
+        adj0   = toga.Slider(value=0, min=0, max=1000, on_change=self.setLimit, style=Pack(width=320, height=20))
+        boxrow = toga.Box(children=[desc, adj0], style=Pack(direction=ROW, align_items=END))
+        scan_content.add(boxrow)
+
+        btn    = toga.Button(id=SV0H, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("     High Limit", style=Pack(width=244, align_items=END, font_size=12))
+        entry1  = toga.NumberInput(on_change=self.change_ptid, min=0, max=9999, style=Pack(flex=1, height=48, width=LNUMWIDTH, font_size=18, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, entry1, btn], style=Pack(direction=ROW, align_items=END, margin_top=1))
+        scan_content.add(boxrow)
+
+        desc   = toga.Label(" ", style=Pack(width=20, align_items=END, font_size=18))
+        adj0   = toga.Slider(value=0, min=0, max=1000, on_change=self.setLimit, style=Pack(width=320, height=20))
+        boxrow = toga.Box(children=[desc, adj0], style=Pack(direction=ROW, align_items=END))
+        scan_content.add(boxrow)
+
+
+############################################################# 
+
+        boxrow = toga.Box(children=[blank, toga.Divider(), blank], style=Pack(direction=COLUMN, margin_top=20))
+        scan_content.add(boxrow)
+
+       ############################################################# Servo 1 Config
+
+        desc   = toga.Label("Servo 1", style=Pack(width=270, align_items=END, font_size=18))
+        rev    = toga.Switch("Reverse", id=SVR1, value=False, on_change=self.change_ptid)
+        boxrow = toga.Box(children=[desc, rev], style=Pack(direction=ROW, align_items=END, margin_top=8))
+        scan_content.add(boxrow)
+
+        btn    = toga.Button(id=SRVP1, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("     Function Code", style=Pack(width=282, align_items=END, font_size=12))
+        func   = toga.NumberInput(on_change=self.change_ptid, min=0, max=99, style=Pack(flex=1, height=48, width=24, font_size=12, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, func, btn], style=Pack(direction=ROW, align_items=END, margin_top=1))
+        scan_content.add(boxrow)
+
+        desc   = toga.Label("     Low Limit", style=Pack(width=244, align_items=END, font_size=12))
+        entry0 = toga.NumberInput(on_change=self.change_ptid, min=0, max=1000, style=Pack(flex=1, height=48, width=LNUMWIDTH, font_size=18, background_color="#eeeeee", color="#000000"))
+        btn    = toga.Button(id=SV1L, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        boxrow = toga.Box(children=[desc, entry0, btn], style=Pack(direction=ROW, align_items=END, margin_top=1))
+        scan_content.add(boxrow)
+
+        desc   = toga.Label(" ", style=Pack(width=20, align_items=END, font_size=18))
+        adj0   = toga.Slider(value=0, min=0, max=1000, on_change=self.setLimit, style=Pack(width=320, height=20))
+        boxrow = toga.Box(children=[desc, adj0], style=Pack(direction=ROW, align_items=END))
+        scan_content.add(boxrow)
+
+        btn    = toga.Button(id=SV1H, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("     High Limit", style=Pack(width=244, align_items=END, font_size=12))
+        entry1  = toga.NumberInput(on_change=self.change_ptid, min=0, max=9999, style=Pack(flex=1, height=48, width=LNUMWIDTH, font_size=18, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, entry1, btn], style=Pack(direction=ROW, align_items=END, margin_top=1))
+        scan_content.add(boxrow)
+
+        desc   = toga.Label(" ", style=Pack(width=20, align_items=END, font_size=18))
+        adj0   = toga.Slider(value=0, min=0, max=1000, on_change=self.setLimit, style=Pack(width=320, height=20))
+        boxrow = toga.Box(children=[desc, adj0], style=Pack(direction=ROW, align_items=END))
+        scan_content.add(boxrow)
+
+############################################################# 
+
+        boxrow = toga.Box(children=[blank, toga.Divider(), blank], style=Pack(direction=COLUMN, margin_top=20))
+        scan_content.add(boxrow)
+
+       ############################################################# Servo 2 Config
+
+        desc   = toga.Label("Servo 2", style=Pack(width=270, align_items=END, font_size=18))
+        rev    = toga.Switch("Reverse", id=SVR2, value=False, on_change=self.change_ptid)
+        boxrow = toga.Box(children=[desc, rev], style=Pack(direction=ROW, align_items=END, margin_top=8))
+        scan_content.add(boxrow)
+
+        btn    = toga.Button(id=SRVP2, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("     Function Code", style=Pack(width=282, align_items=END, font_size=12))
+        func   = toga.NumberInput(on_change=self.change_ptid, min=0, max=99, style=Pack(flex=1, height=48, width=24, font_size=12, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, func, btn], style=Pack(direction=ROW, align_items=END, margin_top=1))
+        scan_content.add(boxrow)
+
+        desc   = toga.Label("     Low Limit", style=Pack(width=244, align_items=END, font_size=12))
+        entry0 = toga.NumberInput(on_change=self.change_ptid, min=0, max=1000, style=Pack(flex=1, height=48, width=LNUMWIDTH, font_size=18, background_color="#eeeeee", color="#000000"))
+        btn    = toga.Button(id=SV2L, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        boxrow = toga.Box(children=[desc, entry0, btn], style=Pack(direction=ROW, align_items=END, margin_top=1))
+        scan_content.add(boxrow)
+
+        desc   = toga.Label(" ", style=Pack(width=20, align_items=END, font_size=18))
+        adj0   = toga.Slider(value=0, min=0, max=1000, on_change=self.setLimit, style=Pack(width=320, height=20))
+        boxrow = toga.Box(children=[desc, adj0], style=Pack(direction=ROW, align_items=END))
+        scan_content.add(boxrow)
+
+        btn    = toga.Button(id=SV2H, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("     High Limit", style=Pack(width=244, align_items=END, font_size=12))
+        entry1  = toga.NumberInput(on_change=self.change_ptid, min=0, max=9999, style=Pack(flex=1, height=48, width=LNUMWIDTH, font_size=18, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, entry1, btn], style=Pack(direction=ROW, align_items=END, margin_top=1))
+        scan_content.add(boxrow)
+
+        desc   = toga.Label(" ", style=Pack(width=20, align_items=END, font_size=18))
+        adj0   = toga.Slider(value=0, min=0, max=1000, on_change=self.setLimit, style=Pack(width=320, height=20))
+        boxrow = toga.Box(children=[desc, adj0], style=Pack(direction=ROW, align_items=END))
+        scan_content.add(boxrow)
+
+############################################################# 
+
+        boxrow = toga.Box(children=[blank, toga.Divider(), blank], style=Pack(direction=COLUMN, flex=1))
+        scan_content.add(boxrow)
+
+
+        self.scroller = toga.ScrollContainer(content=scan_content)
+        self.main_window.content = self.scroller
+        self.main_window.show()
+
+    def change_ptid(self, id):
+        pass
+
+    def sendPrgCommand(self, id):
+        pass
+
+    def setLimit(self, id):
+        pass
+
 
     def buildAddress(self, adr):
         address = adr.id
@@ -247,13 +495,16 @@ class PTReceiver(toga.App):
         except Exception:
            pintent = PendingIntent.getBroadcast(self.context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
         
-        self.usbmanager.requestPermission(self.device, pintent)
+        try:
+           self.usbmanager.requestPermission(self.device, pintent)
+           self.hasPermission = self.usbmanager.hasPermission(self.device)
+        except:
+           print ("no USB device")
+           return False
 
-        hasPermission = self.usbmanager.hasPermission(self.device)
-        while not hasPermission:
-            hasPermission = self.usbmanager.hasPermission(self.device)
-
-
+        while not self.hasPermission:
+            self.hasPermission = self.usbmanager.hasPermission(self.device)
+            
 ##
 ## Send Directed Message to an Xbee on the Network
 ##
