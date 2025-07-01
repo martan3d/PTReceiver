@@ -8,8 +8,13 @@ import time
 from toga.style import Pack
 from toga import Button, MultilineTextInput, Label, TextInput
 from toga.style.pack import COLUMN, ROW, CENTER, RIGHT, LEFT, START, END
-from java import jclass
-from android.content import Context
+
+if toga.platform.current_platform == 'android':
+   from java import jclass
+   from android.content import Context
+else:
+   import serial
+   import serial.tools.list_ports
 
 # Silicon Labs USB constants
 
@@ -64,14 +69,13 @@ ACCL = 1062
 DECL = 1063
 
 
-# Android Java Class names, used for permissions
 
-Intent = jclass('android.content.Intent')
-PendingIntent = jclass('android.app.PendingIntent')
-
+if toga.platform.current_platform == 'android':
+   # Android Java Class names, used for permissions
+   Intent = jclass('android.content.Intent')
+   PendingIntent = jclass('android.app.PendingIntent')
 
 # Main App
-
 class PTReceiver(toga.App):
     def startup(self):
 
@@ -100,11 +104,36 @@ class PTReceiver(toga.App):
            self.setupPCSerialPort()
 
 
-
+    # PC serial port
     def setupPCSerialPort(self):
-        pass
+        self.sp = None
+        ports = serial.tools.list_ports.comports()
+        for port, desc, hwid in sorted(ports):
+            if 'Silicon Labs CP210' in desc:
+               try:
+                  sp = serial.Serial(port, 38400, timeout=0.25)
+                  self.sp = sp
+                  print ('xbee port opened')
+                  return
+               except:
+                  print ('Silicon Labs CP210x USB Driver Not Found!')
+                  pass
+
+    def getStatus(self):
+        return self.sp
+
+    def close(self):
+        self.sp.close()
+
+    def clear(self):
+        if self.sp != None:
+           self.sp.reset_input_buffer()
+
+    def xbeeReturnResult(self, datalength):
+        return(self.sp.read(datalength))
 
 
+    # Android serial port
     def setupAndroidSerialPort(self):
         # for now, Android
         self.context = jclass('org.beeware.android.MainActivity').singletonThis
@@ -369,6 +398,14 @@ class PTReceiver(toga.App):
 
         boxrow = toga.Box(children=[blank, toga.Divider(), blank], style=Pack(direction=COLUMN, flex=1))
         scan_content.add(boxrow)
+
+        btn    = toga.Button(id=WDOG, text="Prg", on_press = self.sendPrgCommand, style=Pack(width=55, height=55, margin_top=6, background_color="#bbbbbb", color="#000000", font_size=12))
+        desc   = toga.Label("Watch Dog", style=Pack(width=282, align_items=END, font_size=12))
+        func   = toga.NumberInput(on_change=self.change_ptid, min=0, max=99, style=Pack(flex=1, height=48, width=24, font_size=12, background_color="#eeeeee", color="#000000"))
+        boxrow = toga.Box(children=[desc, func, btn], style=Pack(direction=ROW, align_items=END, margin_top=1))
+        scan_content.add(boxrow)
+
+
 
 
         self.scroller = toga.ScrollContainer(content=scan_content)
