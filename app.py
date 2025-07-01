@@ -13,8 +13,7 @@ if toga.platform.current_platform == 'android':
    from java import jclass
    from android.content import Context
 else:
-   import serial
-   import serial.tools.list_ports
+   from .xbee import *
 
 # Silicon Labs USB constants
 
@@ -31,6 +30,13 @@ DEFAULT_READ_BUFFER_SIZE  = 1024
 # Receiver Message types
 
 RETURNTYPE       = 37
+
+DISCOVERYRESPONSE = 1
+INTERNALRESPONSE  = 2
+PTBROADCAST       = 3
+DIRECTEDRESPONSE  = 4
+ACK               = 5
+UNKNOWN           = 6
 
 # Ids for buttons and text/numeric inputs
 
@@ -103,35 +109,11 @@ class PTReceiver(toga.App):
         else:
            self.setupPCSerialPort()
 
-
     # PC serial port
     def setupPCSerialPort(self):
-        self.sp = None
-        ports = serial.tools.list_ports.comports()
-        for port, desc, hwid in sorted(ports):
-            if 'Silicon Labs CP210' in desc:
-               try:
-                  sp = serial.Serial(port, 38400, timeout=0.25)
-                  self.sp = sp
-                  print ('xbee port opened')
-                  return
-               except:
-                  print ('Silicon Labs CP210x USB Driver Not Found!')
-                  pass
-
-    def getStatus(self):
-        return self.sp
-
-    def close(self):
-        self.sp.close()
-
-    def clear(self):
-        if self.sp != None:
-           self.sp.reset_input_buffer()
-
-    def xbeeReturnResult(self, datalength):
-        return(self.sp.read(datalength))
-
+        self.Xbee = xbeeController()
+        if self.Xbee.getStatus() != None:
+           self.Xbee.clear()
 
     # Android serial port
     def setupAndroidSerialPort(self):
@@ -153,7 +135,7 @@ class PTReceiver(toga.App):
         self.openAndConfigureUSBPort()
 
         # test connection by sending a broadcast to all nodes, nothing special, not really needed
-#        self.sendTestMessage()
+        self.sendTestMessage()
 
 
     # Send network discovery, all Xbees on this network return who they are
@@ -465,33 +447,58 @@ class PTReceiver(toga.App):
 
     # read any data from the Xbee
     def readXbee(self):
-        buf = bytearray(DEFAULT_READ_BUFFER_SIZE)
-        totalBytesRead = self.connection.bulkTransfer(
-            self.readEndpoint,
-            buf,
-            DEFAULT_READ_BUFFER_SIZE,
-            USB_READ_TIMEOUT_MILLIS,
-        )
+        if toga.platform.current_platform == 'android':
+           buf = bytearray(DEFAULT_READ_BUFFER_SIZE)
+           totalBytesRead = self.connection.bulkTransfer(
+               self.readEndpoint,
+               buf,
+               DEFAULT_READ_BUFFER_SIZE,
+               USB_READ_TIMEOUT_MILLIS,
+           )
+        else:
+           while(1):
+               nodedata = self.pullPacket()
+               print ('nodedata from scan', nodedata)
+               msgtype = nodedata[0]
+
+               if msgtype == DISCOVERYRESPONSE:
+                  print ("DISCOVERY RESPONSE")
+
+               if msgtype == None:
+                  break
+
+           totalBytesRead = len(nodedata)
+           buf = nodedata
+
         return totalBytesRead, buf
 
 
 
-    # General messages
-    def sendTestMessage(self):
-        buf = bytearray([0x7E, 0x00, 0x11, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x4D, 0x61, 0x72, 0x74, 0x69, 0x6E, 0x95])
-        data_length = len(buf)
-        status = self.connection.bulkTransfer(self.writeEndpoint, buf, data_length, USB_WRITE_TIMEOUT_MILLIS)
-
     def sendNetworkDiscovery(self):
         buf = bytearray([0x7E, 0x00, 0x04, 0x08, 0x01, 0x4E, 0x44, 0x64])
         data_length = len(buf)
-        status = self.connection.bulkTransfer(self.writeEndpoint, buf, data_length, USB_WRITE_TIMEOUT_MILLIS)
+        if toga.platform.current_platform == 'android':
+           status = self.connection.bulkTransfer(self.writeEndpoint, buf, data_length, USB_WRITE_TIMEOUT_MILLIS)
+        else:
+           self.Xbee.xbeeDataQuery('N','D')    # network discovery, all Xbees answer this
+
+    # General message
+    def sendTestMessage(self):
+        buf = bytearray([0x7E, 0x00, 0x11, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x4D, 0x61, 0x72, 0x74, 0x69, 0x6E, 0x95])
+        data_length = len(buf)
+        if toga.platform.current_platform == 'android':
+           status = self.connection.bulkTransfer(self.writeEndpoint, buf, data_length, USB_WRITE_TIMEOUT_MILLIS)
+        else:
+           self.sp.write(buf)
 
     def sendXbeeRequest(self, buff):
         data_length = len(buff)
         print (data_length, buff)
         buffer = bytearray(buff)
-        status = self.connection.bulkTransfer(self.writeEndpoint, buffer, data_length, USB_WRITE_TIMEOUT_MILLIS)
+        if toga.platform.current_platform == 'android':
+           status = self.connection.bulkTransfer(self.writeEndpoint, buffer, data_length, USB_WRITE_TIMEOUT_MILLIS)
+        else:
+           self.sp.write(buf)
 
     # open the USB port and configure it as a serial port to talk to the Xbee
     def openAndConfigureUSBPort(self):
@@ -586,7 +593,79 @@ class PTReceiver(toga.App):
 
         return frame
 
+#
+# Read from Xbee if we are on PC
 
+    def pullPacket(self):
+        data = self.Xbee.getPacket()
+
+        if data != None:
+           p = "Rx : "
+           for d in data:
+               p = p + "%x " % d
+           print (p)
+
+        msgtype = None
+        msb     = None
+        lsb     = None
+
+        if data != None:
+           msgtype = data[3]
+           msb     = data[1]
+           lsb     = data[2]
+
+           if msgtype == 129:
+              if data[7] == 2:
+                 #print ("Protothrottle Broadcast")
+                 return [PTBROADCAST, None, None, None]
+
+              if data[7] == 0:
+                 # process a return directed message from my receiver
+                 nodeid  = self.getNodeID(data)       # yep, grab some stuff
+                 address = self.getAddress(data)      # Node ID and network address
+                 return [DIRECTEDRESPONSE, address, nodeid, data]
+
+           if msgtype == 136:
+              #print ("node discovery response")
+              if lsb > 5:                        # is this from external nodes?
+                 nodeid  = self.getNodeID(data)       # yep, grab some stuff
+                 address = self.getAddress(data)      # Node ID and network address
+                 return [DISCOVERYRESPONSE, address, nodeid, None]
+              else:
+                 #print ("internal ND response")  # otherwise it's from us, just toss it
+                 return [INTERNALRESPONSE, None, None, None]
+
+           if msgtype == 137:                    # Log ACKs from any outgoing messages
+              print ("ACK")
+              return [ACK, None, None, None]
+
+           return [UNKNOWN, None, None, data]
+
+        return [None, None, None, None]
+
+
+    # get ascii mac address
+
+    def getAddress(self, data):
+        addr = ""
+        for i in range(10, 18):
+            a = "%02x" % data[i]
+            addr = addr + a
+        return addr
+
+    # get the ASCII name NodeID from the 'ND' response message
+
+    def getNodeID(self, data):
+        nodeid = ""
+        for i in range(19,37):
+            if data[i] == 0:
+               return nodeid
+            d = chr(data[i])
+            if d.isalpha() or d.isdigit():
+               nodeid = nodeid + d
+            else:
+               nodeid = nodeid + ' '
+        return nodeid
 
 def main():
     return PTReceiver()
