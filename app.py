@@ -458,6 +458,10 @@ class PTReceiver(toga.App):
 
     # read any data from the Xbee
     def readXbee(self):
+
+        totalBytesRead = 0
+        buf = ""
+
         if toga.platform.current_platform == 'android':
            buf = bytearray(DEFAULT_READ_BUFFER_SIZE)
            totalBytesRead = self.connection.bulkTransfer(
@@ -467,19 +471,10 @@ class PTReceiver(toga.App):
                USB_READ_TIMEOUT_MILLIS,
            )
         else:
-           while(1):
-               nodedata = self.pullPacket()
-               print ('nodedata from scan', nodedata)
-               msgtype = nodedata[0]
-
-               if msgtype == DISCOVERYRESPONSE:
-                  print ("DISCOVERY RESPONSE")
-
-               if msgtype == None:
-                  break
-
-           totalBytesRead = len(nodedata)
-           buf = nodedata
+           data = self.Xbee.getPacket()
+           if data != None:
+              buf = data
+              totalBytesRead = len(buf)
 
         return totalBytesRead, buf
 
@@ -609,6 +604,7 @@ class PTReceiver(toga.App):
 
     def pullPacket(self):
         data = self.Xbee.getPacket()
+
 
         if data != None:
            p = "Rx : "
