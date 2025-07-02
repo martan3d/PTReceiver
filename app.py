@@ -5,6 +5,7 @@ Protothrottle Receiver Programmer App
 import toga
 import asyncio
 import time
+import itertools
 from toga.style import Pack
 from toga import Button, MultilineTextInput, Label, TextInput
 from toga.style.pack import COLUMN, ROW, CENTER, RIGHT, LEFT, START, END
@@ -85,6 +86,15 @@ if toga.platform.current_platform == 'android':
 class PTReceiver(toga.App):
     def startup(self):
 
+        self.displayMainScreen()
+
+        # Use Android or PC code?
+        if toga.platform.current_platform == 'android':
+           self.setupAndroidSerialPort()
+        else:
+           self.setupPCSerialPort()
+
+    def displayMainScreen(self):
         self.discover_button = Button(
             'Scan',
             on_press=self.start_discover,
@@ -103,11 +113,6 @@ class PTReceiver(toga.App):
         self.main_window.content = self.scroller
         self.main_window.show()
 
-        # Use Android or PC code?
-        if toga.platform.current_platform == 'android':
-           self.setupAndroidSerialPort()
-        else:
-           self.setupPCSerialPort()
 
     # PC serial port
     def setupPCSerialPort(self):
@@ -157,11 +162,11 @@ class PTReceiver(toga.App):
         scan_content.add(self.working_text)
 
         # may be several responses, turn data into list of xbee api frames
-        responses = self.parseNodeData(size, dataBuffer)
+        messages = self.parseMessageData(size, dataBuffer)
 
         # for each message, pull out the mac address and ascii node id
-        for r in responses:
-            mac, id = self.getMacAndNodeID(r)
+        for mac in messages:
+            id  = messages[mac]
             print ("mac:", mac, "id:", id)
             if mac == "" or id == "": continue
             fmstring = "{} {}".format(id, mac)
@@ -176,6 +181,40 @@ class PTReceiver(toga.App):
         self.scroller = toga.ScrollContainer(content=scan_content)
         self.main_window.content = self.scroller
         self.main_window.show()
+
+    def parseMessageData(self, size, data):
+        messages = []
+        msg = []
+        if size > 0:
+           msg.append(data[0])
+        for i in range(1, size):
+            if data[i] == 0x7e:
+               messages.append(msg)
+               msg = []
+               msg.append(data[i])
+            else:
+               msg.append(data[i])
+        messages.append(msg)
+
+        nodeData = {}
+
+        if len(messages) <= 0: 
+           return nodeData
+
+        for msg in messages:
+            mac = ""
+            id  = ""
+
+            if len(msg) > 20:
+               if msg[3] != 129:
+                  for i in range(10, 18):
+                     mac = mac + "{:02X}".format(msg[i])
+                  for i in range(19, len(msg)-2):
+                     id = id + chr(msg[i])
+                  nodeData[mac] = id
+
+        return nodeData
+
 
     # after scan, all devices are displayed as buttons, pressing one of them sends query to that mac address
     def connectToClient(self, buttonid):
@@ -416,34 +455,6 @@ class PTReceiver(toga.App):
         dest[6] = int(address[12:14], 16)
         dest[7] = int(address[14:16], 16)
         return dest
-
-    # iterates through the data to turn it into a list of one or more messages, delimited by 0x7E
-    def parseNodeData(self, size, data):
-        messages = []
-        msg = []
-        if size > 0:
-           msg.append(data[0])
-        for i in range(1, size):
-            if data[i] == 0x7e:
-               messages.append(msg)
-               msg = []
-               msg.append(data[i])
-            else:
-               msg.append(data[i])
-        messages.append(msg)
-        return messages
-
-
-    # parses through a list that is an API Node ID return fram and pulls out the mac address and name
-    def getMacAndNodeID(self, data):
-        mac = "" 
-        id = ""
-        if len(data) > 20:
-            for i in range(10, 18):
-                mac = mac + "{:02X}".format(data[i])
-            for i in range(19, len(data)-2):
-                id = id + chr(data[i])
-        return mac, id
 
     # read any data from the Xbee
     def readXbee(self):
